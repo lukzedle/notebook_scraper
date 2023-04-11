@@ -84,6 +84,12 @@ class Notebook_Scraper:
                         except:
                             value_lap = np.nan
                         notebook_dict[key_lap] = value_lap
+                try:
+                  cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0]
+                except:
+                  cpu = np.nan
+                notebook_dict['CPU:'] = cpu
+                print(notebook_dict['CPU:'])
                 self.full_details_list.append(notebook_dict)
           
         return self.full_details_list
