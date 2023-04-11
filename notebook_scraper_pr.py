@@ -85,7 +85,11 @@ class Notebook_Scraper:
                             value_lap = np.nan
                         notebook_dict[key_lap] = value_lap
                 try:
-                  cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0]
+                  try:
+                    cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0].split('LCD')[0]
+                  except:
+                    cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0]
+
                 except:
                   cpu = np.nan
                 notebook_dict['CPU:'] = cpu
