@@ -47,9 +47,9 @@ class Notebook_Scraper:
 
             # for item in soup.find('div', {'class': 'tests-product-entry'}):
             #   print(item.find('div',{'class': 'py-1'}))
-
+            counter = 0
             for item in soup.find_all('div', {'class': 'tests-product-entry'}):
-
+                counter += 1
                 notebook_dict = {}
                 try:
                     price = item.find('div', {'class': 'text-3xl font-bold leading-8'}).get_text().replace('zł',
@@ -69,7 +69,7 @@ class Notebook_Scraper:
 
                 notebook_dict['price'] = float(price.replace(u'\xa0', '').replace(',', '.'))
                 notebook_dict['price_no_sale'] = float(price_no_sale.replace(u'\xa0', '').replace(',', '.'))
-                print(price, price_no_sale)
+                print(price, price_no_sale, counter)
 
                 for detail in item.find_all('div', {'class': 'py-1'}):
                     if detail.find('span') == None:
@@ -85,7 +85,7 @@ class Notebook_Scraper:
                             value_lap = np.nan
                         notebook_dict[key_lap] = value_lap
                 self.full_details_list.append(notebook_dict)
-
+          
         return self.full_details_list
 
     def save_data(self, data: list, file_name: str):
