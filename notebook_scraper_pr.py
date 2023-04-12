@@ -4,6 +4,8 @@ import csv
 import time
 from random import uniform
 import numpy as np
+import pandas as pd
+from fuzzywuzzy import fuzz
 
 
 class Notebook_Scraper:
@@ -64,7 +66,7 @@ class Notebook_Scraper:
                         ' ', '').replace('\\xa', '').strip()
                 except:
                     price_no_sale = item.find('div', {'class': 'text-3xl font-bold leading-8'}).get_text().replace('zł',
-                                                                                                           '').replace(
+                                                                                                                   '').replace(
                         ' ', '').replace('\\xa', '').strip()
 
                 notebook_dict['price'] = float(price.replace(u'\xa0', '').replace(',', '.'))
@@ -85,17 +87,30 @@ class Notebook_Scraper:
                             value_lap = np.nan
                         notebook_dict[key_lap] = value_lap
                 try:
-                  try:
-                    cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0].split('LCD')[0]
-                  except:
-                    cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop', 'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0]
+                    try:
+                        cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop',
+                                              'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[
+                            0].split('LCD')[0]
+                    except:
+                        cpu = item.find('p', {'ng-if': '!$ctrl.showOnDesktop',
+                                              'class': 'wrap-text mt-2 text-xs text-gray-gravel'}).text.split('|')[0]
 
                 except:
-                  cpu = np.nan
+                    cpu = np.nan
                 notebook_dict['CPU:'] = cpu
                 print(notebook_dict['CPU:'])
+
+                try:
+                    brand = item.find('h2', {
+                        'class': 'font-headline text-lg font-bold leading-6 line-clamp-3 md:text-xl md:leading-8'}).find(
+                        'a').text.strip().split(' ')[0]
+
+                except:
+                    brand = np.nan
+                notebook_dict['Marka:'] = brand
+                print(notebook_dict['Marka:'])
+
                 self.full_details_list.append(notebook_dict)
-          
         return self.full_details_list
 
     def save_data(self, data: list, file_name: str):
@@ -130,3 +145,54 @@ class Notebook_Scraper:
                 res = eval(it[0].replace("'", '"'))
                 self.full_details_list.append(res)
         return self.full_details_list
+
+def get_gpu_scores(graphic_cards: pd.Series) -> dict:
+    """
+    Scrape GPU benchmark scores, check the similarity between the scraped GPU and the ones passed in the argument.
+
+    Args:
+        graphic_cards: a pd.Series with graphic cards from scraped laptop data.
+
+    Returns:
+        matched_gpus: a dict where a key is a name of a graphics card present in the laptops dataframe and a value is a matched benchmark score.
+    """
+
+    url = 'https://browser.geekbench.com/opencl-benchmarks'
+
+    response = requests.get(url)
+    content = response.content
+    soup = BeautifulSoup(content, 'html.parser')
+
+    gpu_scores = {}
+    gpus = []
+    scores = []
+    for item in soup.find_all('table', {'class': 'table benchmark-chart-table'}):
+        for gpu in soup.find_all('td', {'class': 'name'}):
+            gpus.append(gpu.text.strip())
+        for score in soup.find_all('td', {'class': 'score'}):
+            scores.append(int(score.text))
+
+    for i in range(0, len(gpus)):
+        gpu_scores[gpus[i]] = scores[i]
+
+    print(gpu_scores)
+
+    list_of_gpus = graphic_cards.unique().tolist()
+    print(type(list_of_gpus[0]), list_of_gpus[0])
+
+    # find the best matching GPU name in the dictionary for each GPU name in the list
+    matches = {}
+    matched_gpus = {}
+    for gpu_name in list_of_gpus:
+        best_match = None
+        best_score = 0
+        for name in gpu_scores.keys():
+            score = fuzz.ratio(name, str(gpu_name))
+            if score > best_score:
+                best_match = gpu_name
+                best_score = score
+                best_value = gpu_scores[name]
+        matches[gpu_name] = best_match
+        matched_gpus[best_match] = best_value
+
+    return matched_gpus
