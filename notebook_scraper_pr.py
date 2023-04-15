@@ -6,6 +6,7 @@ from random import uniform
 import numpy as np
 import pandas as pd
 from fuzzywuzzy import fuzz
+from sklearn.model_selection import train_test_split
 
 
 class Notebook_Scraper:
@@ -196,3 +197,22 @@ def get_gpu_scores(graphic_cards: pd.Series) -> dict:
         matched_gpus[best_match] = best_value
 
     return matched_gpus
+
+def separate_train_test(df, X_list: list, y_list:list):
+    """
+    Divides data into training and test sets
+    Args:
+        df: dataframe with data to be divided
+        X_list: a list of independent variables that will divide 
+        y_list: a list of dependent variables that will divide 
+
+    Returns:
+
+    """
+    X = df[X_list]
+    y = df[y_list]
+    X_train, X_test, y_train, y_test = train_test_split(X, 
+                                                    y, 
+                                                    test_size=0.2, 
+                                                    random_state=42) # zwraca tupla z czterema elementami 
+    return X_train, X_test, y_train, y_test
