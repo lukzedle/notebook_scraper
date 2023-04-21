@@ -6,8 +6,6 @@ from random import uniform
 import numpy as np
 import pandas as pd
 from fuzzywuzzy import fuzz
-from sklearn.model_selection import train_test_split
-
 
 class Notebook_Scraper:
     """
@@ -198,21 +196,126 @@ def get_gpu_scores(graphic_cards: pd.Series) -> dict:
 
     return matched_gpus
 
-def separate_train_test(df, X_list: list, y_list:list):
+def data_modification(X: pd.DataFrame, y: pd.DataFrame):
     """
-    Divides data into training and test sets
+    Data processing of the transferred dataframe
     Args:
-        df: dataframe with data to be divided
-        X_list: a list of independent variables that will divide 
-        y_list: a list of dependent variables that will divide 
-
+        X: a df of independent values
+        y: a df of dependent values
     Returns:
-
+        X: a df of a processed independent values
+        y: a df of a processed dependent value
     """
-    X = df[X_list]
-    y = df[y_list]
-    X_train, X_test, y_train, y_test = train_test_split(X, 
-                                                    y, 
-                                                    test_size=0.2, 
-                                                    random_state=42) # zwraca tupla z czterema elementami 
-    return X_train, X_test, y_train, y_test
+
+    X['System operacyjny:'] = X['System operacyjny:'].map(
+        lambda x: 'Windows' if x.lower().startswith('windows') else x)
+    X['Wielkość pamięci RAM:'] = X['Wielkość pamięci RAM:'].str.split(' ').map(lambda x: x[0]).astype(
+        int)
+    most_common_ssd = X['Pojemność dysku SSD:'].value_counts().head().index[0]
+    X['Pojemność dysku SSD:'].fillna(most_common_ssd, inplace=True)
+    X['Pojemność dysku SSD:'] = X['Pojemność dysku SSD:'].apply(lambda x: x.split(' ')[0]).astype(int)
+    ssd_threshold = 4000
+    price_threshold = np.percentile(y, 75)
+    merged_train = pd.concat([X, y], axis=1)
+    filtered_df = merged_train[
+        (merged_train['Pojemność dysku SSD:'] > ssd_threshold) & (merged_train['price'] < price_threshold)].index
+    X.drop(index=filtered_df, axis=0, inplace=True)
+    y.drop(index=filtered_df, axis=0, inplace=True)
+    most_common = X['Rozdzielczość:'].value_counts().index[0]
+    X['Rozdzielczość:'] = X['Rozdzielczość:'].fillna(most_common)
+    X['Rozdzielczość:'] = X['Rozdzielczość:'].map(
+        lambda x: int(str(x).split('x')[0]) * int(str(x).split('x')[1].strip()[:4]))
+    top_cat = X['Karta graficzna:'].value_counts()[0]
+    X['Karta graficzna:'] = X['Karta graficzna:'].fillna(top_cat)
+    X['Pojemność dysku SSD 2:'] = np.where(X['Pojemność dysku SSD 2:'].isnull(), False, True)
+    X['Podświetlana klawiatura:'] = np.where(X['Podświetlana klawiatura:'] == 'tak', True, False)
+    most_common_type = X['Rodzaj laptopa:'].value_counts().head().index[0]
+    X['Rodzaj laptopa:'].fillna(most_common_type, inplace=True)
+    url = 'https://browser.geekbench.com/opencl-benchmarks'
+    response = requests.get(url)
+    content = response.content
+    soup = BeautifulSoup(content, 'html.parser')
+    gpu_scores = {}
+    gpus = []
+    scores = []
+    for item in soup.find_all('table', {'class': 'table benchmark-chart-table'}):
+        for gpu in soup.find_all('td', {'class': 'name'}):
+            gpus.append(gpu.text.strip())
+        for score in soup.find_all('td', {'class': 'score'}):
+            scores.append(int(score.text))
+    for i in range(0, len(gpus)):
+        gpu_scores[gpus[i]] = scores[i]
+    print(gpu_scores)
+    list_of_gpus = X['Karta graficzna:'].unique().tolist()
+    print(type(list_of_gpus[0]), list_of_gpus[0])
+    # find the best matching GPU name in the dictionary for each GPU name in the list
+    matches = {}
+    matched_gpus = {}
+    for gpu_name in list_of_gpus:
+        best_match = None
+        best_score = 0
+        for name in gpu_scores.keys():
+            score = fuzz.ratio(name, str(gpu_name))
+            if score > best_score:
+                best_match = gpu_name
+                best_score = score
+                best_value = gpu_scores[name]
+        matches[gpu_name] = best_match
+        matched_gpus[best_match] = best_value
+    X['GPU benchmark:'] = X['Karta graficzna:'].map(matched_gpus)
+    url = 'https://browser.geekbench.com/processor-benchmarks'
+    response = requests.get(url)
+    content = response.content
+    soup = BeautifulSoup(content, 'html.parser')
+    cpu_scores = {}
+    cpus = []
+    scores = []
+    single_core = soup.find('div', {'id': 'single-core'})
+    # print(single_score)
+    for item in single_core.find('table', {'class': 'table benchmark-chart-table', 'id': 'pc'}).find_all('a'):
+        cpus.append(item.text.strip())
+    for score in single_core.find('table', {'class': 'table benchmark-chart-table', 'id': 'pc'}).find_all('td', {
+        'class': 'score'}):
+        scores.append(int(score.text))
+    url = 'https://browser.geekbench.com/mac-benchmarks'
+    response = requests.get(url)
+    content = response.content
+    soup = BeautifulSoup(content, 'html.parser')
+    single_core = soup.find('div', {'id': 'single-core'})
+    for item in single_core.find('table', {'class': 'table benchmark-chart-table', 'id': 'mac'}).find_all('div', {
+        'class': 'description'}):
+        name = item.text.strip().split('@')[0].strip()
+        cores = item.text.strip().split('GHz')[1].strip()
+        full_name = name + ' ' + cores
+        cpus.append(full_name)
+    for score in single_core.find('table', {'class': 'table benchmark-chart-table', 'id': 'mac'}).find_all('td', {
+        'class': 'score'}):
+        scores.append(int(score.text))
+    for i in range(0, len(cpus)):
+        cpu_scores[cpus[i]] = scores[i]
+    list_of_cpus = X['CPU:'].unique().tolist()
+    matches = {}
+    matched_cpus = {}
+    for cpu_name in list_of_cpus:
+        best_match = None
+        best_score = 0
+        for name in cpu_scores.keys():
+            score = fuzz.ratio(name, str(cpu_name))
+            if score > best_score:
+                best_match = cpu_name
+                best_score = score
+                best_value = cpu_scores[name]
+        matches[cpu_name] = best_match
+        matched_cpus[best_match] = best_value
+    X['CPU benchmark:'] = X['CPU:'].map(matched_cpus)
+    X['CPU benchmark:'].fillna(X['CPU benchmark:'].mean(), inplace=True)
+    # grouped_data = X.groupby(['System operacyjny:'])
+    # mean_data = grouped_data.mean()
+    # X['CPU benchmark:'] = np.where(X['CPU benchmark:'].isnull(),
+    #                                         float(mean_data.loc[
+    #                                         X[X['CPU benchmark:'].isnull()]['System operacyjny:'], 'CPU benchmark:'].values[0]),
+    #                                         X['CPU benchmark:'])
+    X.drop('Karta graficzna:', axis=1, inplace=True)
+    X.drop('CPU:', axis=1, inplace=True)
+    return X, y
+
