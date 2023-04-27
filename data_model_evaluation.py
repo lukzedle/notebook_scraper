@@ -17,7 +17,9 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
 import pandas as pd
-import pickle
+from typing import Union, List
+import joblib
+from typing import Optional
 
 def separate_train_test(df, y: str):
     """
@@ -61,7 +63,25 @@ def scaling_reg_train(X, y):
     else:
         return encoded_x, scaled_y, scaler_x, scaler_y, ohe
 
-def quick_rfecv_eval(scaled_x, scaled_y, scaler_x=None, ohe=None):
+def quick_rfecv_eval(scaled_x: pd.Series, scaled_y: pd.Series, scaler_x: Optional[StandardScaler] = None,
+                      ohe: Optional[OneHotEncoder] = None) -> None:
+    """
+    Performs Recursive Feature Elimination with Cross-Validation (RFECV) using several regression models to evaluate the
+    optimal number of features and their ranking.
+
+    Args:
+        scaled_x: A pandas series with the scaled independent variables.
+        scaled_y: A pandas series with the scaled dependent variable.
+        scaler_x: A standard scaler object fit on the independent variables. Default is None.
+        ohe: A one-hot encoder object fit on the independent variables. Default is None.
+
+    Returns:
+        None.
+
+    Raises:
+        None.
+    """
+    # Initialize regression models
     lr = LinearRegression()
     lasso = Lasso(alpha=0.1)
     ridge = Ridge()
@@ -69,56 +89,50 @@ def quick_rfecv_eval(scaled_x, scaled_y, scaler_x=None, ohe=None):
     dt = DecisionTreeRegressor(random_state=1)
     rf = RandomForestRegressor(random_state=1)
 
+    # Iterate over regression models
     for name, model in [('Linear Regression', lr), ('Lasso Regression', lasso),
                         ('Ridge Regression', ridge), ('SVR', svr), ('Decision Tree Regression', dt),
-
                         ('Random Forest Regression', rf)]:
+        # Apply RFECV
         rfecv = RFECV(estimator=model, step=1, cv=5, scoring='neg_mean_squared_error')
         rfecv.fit(scaled_x, scaled_y)
 
+        # Print results
         print(f'Model: {name}')
         print(f'Optimal number of features: {rfecv.n_features_}')
         print(f'Feature ranking: {rfecv.ranking_}')
         if scaler_x and ohe:
-          print(
-              f'Features names: {[item[1] for item in [(rank, name) for rank, name in zip(rfecv.ranking_, np.concatenate([scaler_x.get_feature_names_out(), ohe.get_feature_names_out()]))] if item[0] == 1]}')
-        else:
-          pass
+            # Print feature names if scaler_x and ohe are provided
+            print(f'Features names: {[item[1] for item in [(rank, name) for rank, name in zip(rfecv.ranking_, np.concatenate([scaler_x.get_feature_names_out(), ohe.get_feature_names_out()]))] if item[0] == 1]}')
+
+
+
+
           
-def pickle_results(models: list, models_results: list):
+def save_model(model: Union[object, List[object]], file_path: str) -> None:
+    """
+    Saves an ML model or a list of models using the joblib library.
 
-  for model, model_results in zip(models, models_results):
-    with open('list_of_models.pkl', 'rb') as f:
-        list_of_models = pickle.load(f)
+    Args:
+        model: An ML model object or a list of ML model objects.
+        file_path: A string representing the file path to save the model.
 
-    list_of_models.append(model)
+    Returns:
+        None.
 
-    with open('list_of_models.pkl', 'wb') as f:
-        list_of_models = pickle.dump(list_of_models, f)
-
-    with open('list_of_results.pkl', 'rb') as f:
-        list_of_results = pickle.load(f)
-
-    list_of_results.append(model_results)
-
-    with open('list_of_results.pkl', 'wb') as f:
-        list_of_results = pickle.dump(list_of_results, f)
-
-    with open('list_of_best_estimators.pkl', 'rb') as f:
-        list_of_best_estimators = pickle.load(f)
-
-    list_of_best_estimators.append(model.best_estimator_)
-
-    with open('list_of_best_estimators.pkl', 'wb') as f:
-        list_of_best_estimators = pickle.dump(list_of_best_estimators, f)
-
-    with open('list_of_names.pkl', 'rb') as f:
-        list_of_names = pickle.load(f)
-
-    list_of_names.append(str(model))
-
-    with open('list_of_names.pkl', 'wb') as f:
-        list_of_names = pickle.dump(list_of_names, f)
+    Raises:
+        None.
+    """
+    # Save single model
+    if not isinstance(model, list):
+        joblib.dump(model, file_path)
+        print(f"Model saved to {file_path}")
+    # Save multiple models
+    else:
+        for idx, m in enumerate(model):
+            file = file_path.split(".")[0] + f"_{idx}" + ".joblib"
+            joblib.dump(m, file)
+            print(f"Model {idx} saved to {file}")
 
 def linear_model_evaluation(model, scaled_x: np.ndarray, scaled_y: np.ndarray, scaler_y, params: dict, cv_folds=10):
   linear_pipeline = Pipeline([
@@ -156,7 +170,6 @@ def linear_model_evaluation(model, scaled_x: np.ndarray, scaled_y: np.ndarray, s
 
   visualizer = LearningCurve(
     lr_model.best_estimator_, scoring='neg_mean_squared_error', train_sizes=np.linspace(0.1, 1.0, 10), cv=cv_folds)
-
 
   visualizer.fit(scaled_x, scaled_y)
   visualizer.ax = ax3
